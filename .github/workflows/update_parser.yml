@@ -1,0 +1,44 @@
+name: Check Upstream Parser
+on:
+  # schedule:
+  #   - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Get Latest Tag
+        id: tag
+        run: |
+          TAG=$(curl -s "https://api.github.com/repos/c3lang/tree-sitter-c3/releases/latest" | jq -r .tag_name)
+          if [ "$TAG" == "null" ] || [ -z "$TAG" ]; then
+            # Fallback to the latest tag if releases aren't used correctly
+            TAG=$(curl -s "https://api.github.com/repos/c3lang/tree-sitter-c3/tags" | jq -r '.[0].name')
+          fi
+          echo "latest=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check Update
+        run: |
+          CURRENT=$(grep '^M.TREE_SITTER_C3_VERSION =' lua/c3/init.lua | cut -d'"' -f2)
+          LATEST="${{ steps.tag.outputs.latest }}"
+
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "New version found: $LATEST (Current: $CURRENT)"
+            # replace only the version string
+            sed -i "s/M.TREE_SITTER_C3_VERSION = \"$CURRENT\"/M.TREE_SITTER_C3_VERSION = \"$LATEST\"/g" lua/c3/init.lua
+            chmod +x ./update_queries.sh && ./update_queries.sh
+
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "chore: update tree-sitter parser to $LATEST"
+            git push
+          else
+            echo "Already up to date."
+          fi
