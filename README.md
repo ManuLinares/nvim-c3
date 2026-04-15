@@ -8,6 +8,7 @@ Support for [C3](https://c3-lang.org) in Neovim.
 - Tree-Sitter grammar and highlights ([tree-sitter-c3](https://github.com/c3lang/tree-sitter-c3)).
 - Code formatting via `:C3Format` or `:Format` ([c3fmt](https://github.com/lmichaudel/c3fmt)).
 - Diagnostic info via `:C3Info`.
+- `:C3Update [tool]`: Updates dependencies (`lsp`, `formatter`, or both).
 
 Just install the plugin and open a `.c3` file. Everything is hopefully managed automatically.
 
@@ -23,6 +24,7 @@ Just install the plugin and open a `.c3` file. Everything is hopefully managed a
 ```lua
 {
   "ManuLinares/nvim-c3",
+  build = function() require("c3").update() end, -- (Optional) Auto-update binaries
   config = true,
 }
 ```
@@ -95,14 +97,20 @@ require("c3").setup({
   lsp = {
     enable = true, -- Set to false to disable LSP
     cmd = "c3lsp",
+    version = "latest", -- (2)
   },
   formatter = {
     enable = true, -- Set to false to disable formatter
     cmd = "c3fmt",
     format_on_save = false,
+    config_file = nil, -- Path to .c3fmt file (1)
+    version = "latest", -- (2)
   },
   highlighting = {
     enable_treesitter = true,
   }
 })
 ```
+
+- *(1): Path to a `.c3fmt` configuration file. If a relative path is used, it is resolved from Neovim's current working directory (see `:pwd`). See [c3fmt configuration](https://github.com/lmichaudel/c3fmt#configuration) for more details.*
+- *(2): Minimum version or tag name from GitHub (e.g., `"v0.1.4"`). Defaults to `"latest"`.*

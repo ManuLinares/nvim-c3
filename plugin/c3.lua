@@ -29,6 +29,15 @@ vim.api.nvim_create_autocmd("FileType", {
 			c3.info()
 		end, {})
 
+		vim.api.nvim_buf_create_user_command(args.buf, "C3Update", function(cmd_args)
+			c3.update(cmd_args.args ~= "" and cmd_args.args or nil)
+		end, {
+			nargs = "?",
+			complete = function()
+				return { "lsp", "formatter" }
+			end,
+		})
+
 		c3.start_lsp(args.buf)
 
 		c3.setup_highlighting()

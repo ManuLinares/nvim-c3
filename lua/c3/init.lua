@@ -7,11 +7,14 @@ M.config = {
 	lsp = {
 		enable = true,
 		cmd = "c3lsp",
+		version = "latest",
 	},
 	formatter = {
 		enable = true,
 		cmd = "c3fmt",
 		format_on_save = false,
+		config_file = nil,
+		version = "latest",
 	},
 	highlighting = {
 		enable_treesitter = true,
@@ -22,7 +25,14 @@ function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 end
 
-local function install_and_get_formatter()
+local function get_download_version_path(version)
+	if version == "latest" then
+		return "latest/download"
+	end
+	return "download/" .. version
+end
+
+local function install_and_get_formatter(force)
 	local cmd = M.config.formatter.cmd
 	if vim.fn.executable(cmd) == 1 then return cmd end
 
@@ -30,14 +40,15 @@ local function install_and_get_formatter()
 	local bin_path = bin_dir .. "/c3fmt"
 	if vim.fn.has("win32") == 1 then bin_path = bin_path .. ".exe" end
 
-	if vim.fn.filereadable(bin_path) == 1 then return bin_path end
+	if not force and vim.fn.filereadable(bin_path) == 1 then return bin_path end
 
 	if vim.fn.executable("curl") == 1 then
-		vim.api.nvim_echo({{ "Downloading c3fmt from GitHub...", "None" }}, false, {})
+		vim.api.nvim_echo({{ "Downloading c3fmt (" .. M.config.formatter.version .. ") from GitHub...", "None" }}, false, {})
 		vim.fn.mkdir(bin_dir, "p")
 		local os = vim.fn.has("mac") == 1 and "macos" or (vim.fn.has("win32") == 1 and "windows.exe" or "linux")
 
-		local url = string.format("https://github.com/lmichaudel/c3fmt/releases/latest/download/c3fmt-%s", os)
+		local v_path = get_download_version_path(M.config.formatter.version)
+		local url = string.format("https://github.com/lmichaudel/c3fmt/releases/%s/c3fmt-%s", v_path, os)
 
 		vim.fn.system({ "curl", "-sL", url, "-o", bin_path })
 		if vim.v.shell_error == 0 then
@@ -60,7 +71,13 @@ function M.format()
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 	local input = table.concat(lines, "\n")
 
-	local output = vim.fn.system({ cmd_path, "--stdin", "--stdout" }, input)
+	local cmd_args = { cmd_path, "--stdin", "--stdout" }
+	if M.config.formatter.config_file then
+		local config_path = vim.fn.fnamemodify(tostring(M.config.formatter.config_file), ":p")
+		table.insert(cmd_args, "--config=" .. config_path)
+	end
+
+	local output = vim.fn.system(cmd_args, input)
 
 	if vim.v.shell_error == 0 and output ~= "" then
 		local view = vim.fn.winsaveview()
@@ -75,28 +92,30 @@ function M.format()
 	end
 end
 
-local function install_and_get_lsp()
+local function install_and_get_lsp(force)
 	local cmd = M.config.lsp.cmd
-	if vim.fn.executable(cmd) == 1 then return cmd end
+	if not force and vim.fn.executable(cmd) == 1 then return cmd end
 
 	local lsp_dir = vim.fn.stdpath("data") .. "/c3-lsp"
 	local bin_path = lsp_dir .. "/lsp"
 	if vim.fn.has("win32") == 1 then bin_path = bin_path .. ".exe" end
 
-	if vim.fn.filereadable(bin_path) == 1 then return bin_path end
+	if not force and vim.fn.filereadable(bin_path) == 1 then return bin_path end
 
 	local has_unzip = vim.fn.executable("unzip") == 1
 	local has_tar = vim.fn.executable("tar") == 1
 	local has_curl = vim.fn.executable("curl") == 1
 
 	if has_curl and (has_unzip or has_tar) then
-		vim.api.nvim_echo({{ "Downloading C3 LSP from GitHub...", "None" }}, false, {})
+		vim.api.nvim_echo({{ "Downloading C3 LSP (" .. M.config.lsp.version .. ") from GitHub...", "None" }}, false, {})
 		vim.fn.mkdir(lsp_dir, "p")
 		local os = vim.fn.has("mac") == 1 and "macos" or (vim.fn.has("win32") == 1 and "windows" or "linux")
-		local arch = vim.uv.os_uname().machine
+		local uv = vim.uv or vim.loop
+		local arch = uv.os_uname().machine
 		arch = (arch:match("arm") or arch:match("aarch64")) and "aarch64" or "x86_64"
 
-		local url = string.format("https://github.com/tonis2/lsp/releases/latest/download/c3-lsp-%s-%s.zip", os, arch)
+		local v_path = get_download_version_path(M.config.lsp.version)
+		local url = string.format("https://github.com/tonis2/lsp/releases/%s/c3-lsp-%s-%s.zip", v_path, os, arch)
 		local zip_path = lsp_dir .. "/lsp.zip"
 
 		vim.fn.system({ "curl", "-sL", url, "-o", zip_path })
@@ -262,6 +281,18 @@ function M.info()
 	end
 
 	vim.api.nvim_echo({{ table.concat(status, "\n"), "None" }}, true, {})
+end
+
+function M.update(tool)
+	if not tool or tool == "formatter" then
+		install_and_get_formatter(true)
+	end
+	if not tool or tool == "lsp" then
+		install_and_get_lsp(true)
+	end
+	if tool and tool ~= "formatter" and tool ~= "lsp" then
+		vim.notify("Unknown tool for update: " .. tool, vim.log.levels.ERROR)
+	end
 end
 
 return M
