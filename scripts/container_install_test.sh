@@ -24,7 +24,7 @@ return {
 EOF
 
 echo "--- Initializing Neovim ---"
-nvim --headless "+Lazy! sync" +qa
+nvim --headless "+Lazy! sync" +qa > /dev/null 2>&1
 
 echo "--- Testing Dependency Updates ---"
 nvim --headless "+lua require('c3').update()" +qa
