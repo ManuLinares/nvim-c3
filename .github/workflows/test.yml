@@ -1,0 +1,18 @@
+name: Installation Test
+
+on:
+  push:
+    branches: [ main, updates ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run Containerized Installation Test
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/test_podman.sh

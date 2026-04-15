@@ -23,22 +23,17 @@ jobs:
           fi
           echo "latest=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Check Update
+      - name: Update Version and Queries
         run: |
-          CURRENT=$(grep '^M.TREE_SITTER_C3_VERSION =' lua/c3/init.lua | cut -d'"' -f2)
           LATEST="${{ steps.tag.outputs.latest }}"
+          chmod +x ./scripts/update_queries.sh
+          ./scripts/update_queries.sh "$LATEST"
 
-          if [ "$CURRENT" != "$LATEST" ]; then
-            echo "New version found: $LATEST (Current: $CURRENT)"
-            # replace only the version string
-            sed -i "s/M.TREE_SITTER_C3_VERSION = \"$CURRENT\"/M.TREE_SITTER_C3_VERSION = \"$LATEST\"/g" lua/c3/init.lua
-            chmod +x ./update_queries.sh && ./update_queries.sh
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: update tree-sitter parser to ${{ steps.tag.outputs.latest }}" || echo "No changes to commit"
+          git push
 
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add .
-            git commit -m "chore: update tree-sitter parser to $LATEST"
-            git push
-          else
-            echo "Already up to date."
-          fi
