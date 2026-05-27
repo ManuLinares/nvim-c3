@@ -8,6 +8,8 @@ M.config = {
 		enable = true,
 		cmd = "c3lsp",
 		version = "latest",
+		compiler_path = nil,
+		stdlib_path = nil,
 	},
 	formatter = {
 		enable = true,
@@ -141,10 +143,35 @@ function M.start_lsp(bufnr)
 
 	local root_dir = vim.fs.dirname(vim.fs.find({'project.json', '.git'}, { upward = true })[1]) or vim.fn.getcwd()
 
+	local cmd = { cmd_path }
+	local compiler_path = M.config.lsp.compiler_path or (vim.fn.executable("c3c") == 1 and vim.fn.exepath("c3c") or nil)
+	if compiler_path and compiler_path ~= "" then
+		table.insert(cmd, "--compiler-path")
+		table.insert(cmd, compiler_path)
+	end
+
+	local stdlib_path = M.config.lsp.stdlib_path
+	if not stdlib_path and compiler_path then
+		local build_env = vim.fn.system({ compiler_path, "compile", "-", "--build-env" })
+		if vim.v.shell_error == 0 then
+			for line in string.gmatch(build_env, "[^\r\n]+") do
+				local path = string.match(line, "^Stdlib%s*:%s*(.-)%s*$")
+				if path then
+					stdlib_path = vim.fn.fnamemodify(path, ":p")
+					break
+				end
+			end
+		end
+	end
+	if stdlib_path and stdlib_path ~= "" then
+		table.insert(cmd, "--stdlib-path")
+		table.insert(cmd, stdlib_path)
+	end
+
 	pcall(function()
 		vim.lsp.start({
 			name = "c3lsp",
-			cmd = { cmd_path },
+			cmd = cmd,
 			root_dir = root_dir,
 			on_attach = function(client, bnr)
 				vim.bo[bnr].omnifunc = 'v:lua.vim.lsp.omnifunc'
