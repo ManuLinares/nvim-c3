@@ -82,9 +82,7 @@
 ] @keyword
 
 [
-  "$alignof"
   "$assert"
-  "$assignable"
   "$case"
   "$default"
   "$defined"
@@ -96,31 +94,20 @@
   "$endif"
   "$endswitch"
   "$eval"
-  "$evaltype"
   "$error"
   "$exec"
-  "$extnameof"
+  "$expand"
   "$feature"
   "$for"
   "$foreach"
   "$if"
   "$include"
-  "$is_const"
-  "$kindof"
-  "$nameof"
-  "$offsetof"
-  "$qnameof"
-  "$sizeof"
+  "$reflect"
   "$stringify"
   "$switch"
-  "$typefrom"
-  "$typeof"
-  "$vacount"
-  "$vatype"
-  "$vaconst"
+  "$Typefrom"
+  "$Typeof"
   "$vaarg"
-  "$vaexpr"
-  "$vasplat"
 ] @keyword.directive
 
 "assert" @keyword.debug
@@ -144,6 +131,7 @@
   "struct"
   "typedef"
   "union"
+  "constdef"
 ] @keyword.type
 
 [
@@ -265,15 +253,10 @@
 ; Builtin (constants)
 (builtin_const) @constant.builtin
 
-; Type Property (from `c3c --list-type-properties`)
+; Type Property
 (type_access_expr
   (access_ident
-    (ident) @variable.builtin
-    (#any-of? @variable.builtin
-      "alignof" "associated" "elements" "extnameof" "from_ordinal" "get" "inf" "is_eq" "is_ordered"
-      "is_substruct" "len" "lookup" "lookup_field" "max" "membersof" "methodsof" "min" "nan" "inner"
-      "kindof" "names" "nameof" "params" "paramsof" "parentof" "qnameof" "returns" "sizeof" "set"
-      "tagof" "has_tagof" "values" "typeid")))
+    (ident) @variable.builtin))
 
 ; Label
 [
@@ -289,7 +272,7 @@
   (path_ident
     (ident) @module))
 
-(import_declaration
+(import_path
   (path_ident
     (ident) @module))
 
