@@ -25,8 +25,53 @@ M.config = {
 	}
 }
 
+local PARSER_DIR = vim.fn.stdpath("data") .. "/c3-parser"
+local PARSER_SO = PARSER_DIR .. "/c3.so"
+
+local FORMATTER_DIR = vim.fn.stdpath("data") .. "/c3-fmt"
+local FORMATTER_BIN = FORMATTER_DIR .. "/c3fmt" .. (vim.fn.has("win32") == 1 and ".exe" or "")
+
+local LSP_DIR = vim.fn.stdpath("data") .. "/c3-lsp"
+local LSP_BIN = LSP_DIR .. "/lsp" .. (vim.fn.has("win32") == 1 and ".exe" or "")
+
+local function verify_query_compatibility(ts)
+	return pcall(function()
+		local get_query = ts.query.get or (vim.treesitter.query and vim.treesitter.query.get)
+		if get_query then get_query("c3", "highlights") end
+	end)
+end
+
+local function warn_outdated_rtp_parsers()
+	local rtp_parsers = vim.api.nvim_get_runtime_file("parser/c3.so", true)
+	if #rtp_parsers > 0 then
+		local paths_str = table.concat(rtp_parsers, ", ")
+		vim.schedule(function()
+			vim.notify(
+				"[nvim-c3] Warning: An outdated or incompatible C3 treesitter parser was found in your runtime path: " .. paths_str .. "\nThis will cause highlighting errors. Please remove or update this file.",
+				vim.log.levels.WARN
+			)
+		end)
+	end
+end
+
 function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+
+	-- Proactively register fallback parser at startup so all plugins (e.g. fzf-lua) use it immediately
+	local ts_ok, ts = pcall(require, "vim.treesitter")
+	if ts_ok then
+		if vim.fn.filereadable(PARSER_SO) == 1 then
+			pcall(function() ts.language.add("c3", { path = PARSER_SO }) end)
+		end
+
+		-- Warn immediately if there's an incompatible parser in rtp
+		local has_parser = pcall(function() ts.language.inspect("c3") end)
+		if has_parser then
+			if not verify_query_compatibility(ts) then
+				warn_outdated_rtp_parsers()
+			end
+		end
+	end
 end
 
 local function get_download_version_path(version)
@@ -40,25 +85,21 @@ local function install_and_get_formatter(force)
 	local cmd = M.config.formatter.cmd
 	if vim.fn.executable(cmd) == 1 then return cmd end
 
-	local bin_dir = vim.fn.stdpath("data") .. "/c3-fmt"
-	local bin_path = bin_dir .. "/c3fmt"
-	if vim.fn.has("win32") == 1 then bin_path = bin_path .. ".exe" end
-
-	if not force and vim.fn.filereadable(bin_path) == 1 then return bin_path end
+	if not force and vim.fn.filereadable(FORMATTER_BIN) == 1 then return FORMATTER_BIN end
 
 	if vim.fn.executable("curl") == 1 then
 		vim.api.nvim_echo({{ "Downloading c3fmt (" .. M.config.formatter.version .. ") from GitHub...", "None" }}, false, {})
-		vim.fn.mkdir(bin_dir, "p")
+		vim.fn.mkdir(FORMATTER_DIR, "p")
 		local os = vim.fn.has("mac") == 1 and "macos" or (vim.fn.has("win32") == 1 and "windows.exe" or "linux")
 
 		local v_path = get_download_version_path(M.config.formatter.version)
 		local url = string.format("https://github.com/lmichaudel/c3fmt/releases/%s/c3fmt-%s", v_path, os)
 
-		vim.fn.system({ "curl", "-sL", url, "-o", bin_path })
+		vim.fn.system({ "curl", "-sL", url, "-o", FORMATTER_BIN })
 		if vim.v.shell_error == 0 then
-			if vim.fn.has("win32") == 0 then vim.fn.system({ "chmod", "+x", bin_path }) end
+			if vim.fn.has("win32") == 0 then vim.fn.system({ "chmod", "+x", FORMATTER_BIN }) end
 			vim.api.nvim_echo({{ "c3fmt installed successfully!", "None" }}, false, {})
-			return bin_path
+			return FORMATTER_BIN
 		end
 	end
 	return nil
@@ -100,11 +141,7 @@ local function install_and_get_lsp(force)
 	local cmd = M.config.lsp.cmd
 	if not force and vim.fn.executable(cmd) == 1 then return cmd end
 
-	local lsp_dir = vim.fn.stdpath("data") .. "/c3-lsp"
-	local bin_path = lsp_dir .. "/lsp"
-	if vim.fn.has("win32") == 1 then bin_path = bin_path .. ".exe" end
-
-	if not force and vim.fn.filereadable(bin_path) == 1 then return bin_path end
+	if not force and vim.fn.filereadable(LSP_BIN) == 1 then return LSP_BIN end
 
 	local has_unzip = vim.fn.executable("unzip") == 1
 	local has_tar = vim.fn.executable("tar") == 1
@@ -112,7 +149,7 @@ local function install_and_get_lsp(force)
 
 	if has_curl and (has_unzip or has_tar) then
 		vim.api.nvim_echo({{ "Downloading C3 LSP (" .. M.config.lsp.version .. ") from GitHub...", "None" }}, false, {})
-		vim.fn.mkdir(lsp_dir, "p")
+		vim.fn.mkdir(LSP_DIR, "p")
 		local os = vim.fn.has("mac") == 1 and "macos" or (vim.fn.has("win32") == 1 and "windows" or "linux")
 		local uv = vim.uv or vim.loop
 		local arch = uv.os_uname().machine
@@ -120,19 +157,19 @@ local function install_and_get_lsp(force)
 
 		local v_path = get_download_version_path(M.config.lsp.version)
 		local url = string.format("https://github.com/tonis2/lsp/releases/%s/c3-lsp-%s-%s.zip", v_path, os, arch)
-		local zip_path = lsp_dir .. "/lsp.zip"
+		local zip_path = LSP_DIR .. "/lsp.zip"
 
 		vim.fn.system({ "curl", "-sL", url, "-o", zip_path })
 		if vim.v.shell_error == 0 then
 			if has_unzip then
-				vim.fn.system({ "unzip", "-o", zip_path, "-d", lsp_dir })
+				vim.fn.system({ "unzip", "-o", zip_path, "-d", LSP_DIR })
 			else
-				vim.fn.system({ "tar", "-xf", zip_path, "-C", lsp_dir })
+				vim.fn.system({ "tar", "-xf", zip_path, "-C", LSP_DIR })
 			end
 			vim.fn.delete(zip_path)
-			if vim.fn.has("win32") == 0 then vim.fn.system({ "chmod", "+x", bin_path }) end
+			if vim.fn.has("win32") == 0 then vim.fn.system({ "chmod", "+x", LSP_BIN }) end
 			vim.api.nvim_echo({{ "C3 LSP installed successfully!", "None" }}, false, {})
-			return bin_path
+			return LSP_BIN
 		end
 	end
 	return nil
@@ -192,11 +229,8 @@ function M.compile_parser(force)
 	local ts_ok, ts = pcall(require, "vim.treesitter")
 	if not ts_ok then return false end
 
-	local parser_path = vim.fn.stdpath("data") .. "/c3-parser"
-	local so_path = parser_path .. "/c3.so"
-
-	if not force and vim.fn.filereadable(so_path) == 1 then
-		pcall(function() ts.language.add("c3", { path = so_path }) end)
+	if not force and vim.fn.filereadable(PARSER_SO) == 1 then
+		pcall(function() ts.language.add("c3", { path = PARSER_SO }) end)
 		return true
 	end
 
@@ -214,12 +248,12 @@ function M.compile_parser(force)
 		M._compile_attempts = M._compile_attempts + 1
 		vim.api.nvim_echo({{ "Compiling tree-sitter-c3 parser fallback...", "None" }}, false, {})
 
-		vim.fn.delete(parser_path, "rf")
+		vim.fn.delete(PARSER_DIR, "rf")
 
 		local error_output = {}
 		vim.fn.jobstart(string.format(
 			"git clone --branch %s --depth 1 https://github.com/c3lang/tree-sitter-c3 '%s' && cd '%s' && %s -fPIC -shared src/parser.c src/scanner.c -I src -o c3.so",
-			M.TREE_SITTER_C3_VERSION, parser_path, parser_path, compiler
+			M.TREE_SITTER_C3_VERSION, PARSER_DIR, PARSER_DIR, compiler
 		), {
 			on_stderr = function(_, data)
 				for _, line in ipairs(data) do
@@ -230,7 +264,7 @@ function M.compile_parser(force)
 				M._is_compiling = false
 				vim.schedule(function()
 					if exit_code == 0 then
-						pcall(function() ts.language.add("c3", { path = so_path }) end)
+						pcall(function() ts.language.add("c3", { path = PARSER_SO }) end)
 						vim.api.nvim_echo({{ "c3 tree-sitter parser compiled successfully.", "None" }}, false, {})
 					else
 						local msg = "Failed to compile c3 tree-sitter parser: " .. table.concat(error_output, " "):sub(1, 100)
@@ -255,17 +289,11 @@ local function check_treesitter_parser()
 	if not ts_ok then return false end
 
 	-- Prioritize our compiled fallback parser if it exists, to override outdated global binaries
-	local parser_path = vim.fn.stdpath("data") .. "/c3-parser"
-	local so_path = parser_path .. "/c3.so"
-	if vim.fn.filereadable(so_path) == 1 then
-		pcall(function() ts.language.add("c3", { path = so_path }) end)
+	if vim.fn.filereadable(PARSER_SO) == 1 then
+		pcall(function() ts.language.add("c3", { path = PARSER_SO }) end)
 		
 		-- Check if the compiled fallback works with our queries
-		local query_ok = pcall(function()
-			local get_query = ts.query.get or (vim.treesitter.query and vim.treesitter.query.get)
-			if get_query then get_query("c3", "highlights") end
-		end)
-		if query_ok then
+		if verify_query_compatibility(ts) then
 			return true
 		end
 	end
@@ -273,12 +301,10 @@ local function check_treesitter_parser()
 	local has_parser = pcall(function() ts.language.inspect("c3") end)
 	if has_parser then
 		-- Check if the inspected parser actually works with our queries
-		local query_ok = pcall(function()
-			local get_query = ts.query.get or (vim.treesitter.query and vim.treesitter.query.get)
-			if get_query then get_query("c3", "highlights") end
-		end)
-		if query_ok then
+		if verify_query_compatibility(ts) then
 			return true
+		else
+			warn_outdated_rtp_parsers()
 		end
 	end
 
