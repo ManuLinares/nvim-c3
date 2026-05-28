@@ -2,6 +2,8 @@ local M = {}
 
 -- Pin version to match parser binary with highlight queries
 M.TREE_SITTER_C3_VERSION = "v0.11.0"
+M._is_compiling = false
+M._compile_attempts = 0
 
 M.config = {
 	lsp = {
@@ -186,6 +188,64 @@ function M.start_lsp(bufnr)
 	end)
 end
 
+function M.compile_parser(force)
+	local ts_ok, ts = pcall(require, "vim.treesitter")
+	if not ts_ok then return false end
+
+	local parser_path = vim.fn.stdpath("data") .. "/c3-parser"
+	local so_path = parser_path .. "/c3.so"
+
+	if not force and vim.fn.filereadable(so_path) == 1 then
+		pcall(function() ts.language.add("c3", { path = so_path }) end)
+		return true
+	end
+
+	local compiler
+	for _, cmd in ipairs({ "cc", "gcc", "clang", "zig cc" }) do
+		local exec_name = string.match(cmd, "^([^ ]+)")
+		if vim.fn.executable(exec_name) == 1 then
+			compiler = cmd
+			break
+		end
+	end
+
+	if vim.fn.executable("git") == 1 and compiler then
+		M._is_compiling = true
+		M._compile_attempts = M._compile_attempts + 1
+		vim.api.nvim_echo({{ "Compiling tree-sitter-c3 parser fallback...", "None" }}, false, {})
+
+		vim.fn.delete(parser_path, "rf")
+
+		local error_output = {}
+		vim.fn.jobstart(string.format(
+			"git clone --branch %s --depth 1 https://github.com/c3lang/tree-sitter-c3 '%s' && cd '%s' && %s -fPIC -shared src/parser.c src/scanner.c -I src -o c3.so",
+			M.TREE_SITTER_C3_VERSION, parser_path, parser_path, compiler
+		), {
+			on_stderr = function(_, data)
+				for _, line in ipairs(data) do
+					if line ~= "" then table.insert(error_output, line) end
+				end
+			end,
+			on_exit = function(_, exit_code)
+				M._is_compiling = false
+				vim.schedule(function()
+					if exit_code == 0 then
+						pcall(function() ts.language.add("c3", { path = so_path }) end)
+						vim.api.nvim_echo({{ "c3 tree-sitter parser compiled successfully.", "None" }}, false, {})
+					else
+						local msg = "Failed to compile c3 tree-sitter parser: " .. table.concat(error_output, " "):sub(1, 100)
+						vim.notify(msg, vim.log.levels.WARN)
+					end
+					vim.cmd("redraw")
+				end)
+			end
+		})
+		return true
+	end
+
+	return false
+end
+
 local function check_treesitter_parser()
 	if not M.config.highlighting.enable_treesitter then
 		return false
@@ -194,10 +254,40 @@ local function check_treesitter_parser()
 	local ts_ok, ts = pcall(require, "vim.treesitter")
 	if not ts_ok then return false end
 
-	local has_parser = pcall(function() ts.language.inspect("c3") end)
-	if has_parser then return true end
+	-- Prioritize our compiled fallback parser if it exists, to override outdated global binaries
+	local parser_path = vim.fn.stdpath("data") .. "/c3-parser"
+	local so_path = parser_path .. "/c3.so"
+	if vim.fn.filereadable(so_path) == 1 then
+		pcall(function() ts.language.add("c3", { path = so_path }) end)
+		
+		-- Check if the compiled fallback works with our queries
+		local query_ok = pcall(function()
+			local get_query = ts.query.get or (vim.treesitter.query and vim.treesitter.query.get)
+			if get_query then get_query("c3", "highlights") end
+		end)
+		if query_ok then
+			return true
+		end
+	end
 
-	-- Try nvim-treesitter integration first
+	local has_parser = pcall(function() ts.language.inspect("c3") end)
+	if has_parser then
+		-- Check if the inspected parser actually works with our queries
+		local query_ok = pcall(function()
+			local get_query = ts.query.get or (vim.treesitter.query and vim.treesitter.query.get)
+			if get_query then get_query("c3", "highlights") end
+		end)
+		if query_ok then
+			return true
+		end
+	end
+
+	-- If we are already compiling or have already attempted compilation in this session, stop here to avoid infinite loops
+	if M._is_compiling or M._compile_attempts > 0 then
+		return has_parser
+	end
+
+	-- Try nvim-treesitter integration next
 	local nvim_ts_ok, parsers = pcall(require, "nvim-treesitter.parsers")
 	if nvim_ts_ok and type(parsers) == "table" and type(parsers.get_parser_configs) == "function" then
 		local parser_configs = parsers.get_parser_configs()
@@ -219,56 +309,8 @@ local function check_treesitter_parser()
 		end
 	end
 
-	-- Fallback: Manual compilation on platforms with cc and git
-	local parser_path = vim.fn.stdpath("data") .. "/c3-parser"
-	local so_path = parser_path .. "/c3.so"
-
-	if vim.fn.filereadable(so_path) == 1 then
-		pcall(function() ts.language.add("c3", { path = so_path }) end)
-		return true
-	end
-
-	local compiler
-	for _, cmd in ipairs({ "cc", "gcc", "clang", "zig cc" }) do
-		local exec_name = string.match(cmd, "^([^ ]+)")
-		if vim.fn.executable(exec_name) == 1 then
-			compiler = cmd
-			break
-		end
-	end
-
-	if vim.fn.executable("git") == 1 and compiler then
-		vim.api.nvim_echo({{ "Auto-installing tree-sitter-c3 parser fallback...", "None" }}, false, {})
-
-		vim.fn.delete(parser_path, "rf")
-
-		local error_output = {}
-		vim.fn.jobstart(string.format(
-			"git clone --branch %s --depth 1 https://github.com/c3lang/tree-sitter-c3 '%s' && cd '%s' && %s -fPIC -shared src/parser.c src/scanner.c -I src -o c3.so",
-			M.TREE_SITTER_C3_VERSION, parser_path, parser_path, compiler
-		), {
-			on_stderr = function(_, data)
-				for _, line in ipairs(data) do
-					if line ~= "" then table.insert(error_output, line) end
-				end
-			end,
-			on_exit = function(_, exit_code)
-				vim.schedule(function()
-					if exit_code == 0 then
-						pcall(function() ts.language.add("c3", { path = so_path }) end)
-						vim.api.nvim_echo({{ "c3 tree-sitter parser installed successfully.", "None" }}, false, {})
-					else
-						local msg = "Failed to compile c3 tree-sitter parser: " .. table.concat(error_output, " "):sub(1, 100)
-						vim.notify(msg, vim.log.levels.WARN)
-					end
-					vim.cmd("redraw")
-				end)
-			end
-		})
-		return false
-	end
-
-	return false
+	-- If the parser is missing or outdated (failed query compilation), auto-compile our own fallback
+	return M.compile_parser(true)
 end
 
 function M.setup_highlighting()
@@ -317,7 +359,10 @@ function M.update(tool)
 	if not tool or tool == "lsp" then
 		install_and_get_lsp(true)
 	end
-	if tool and tool ~= "formatter" and tool ~= "lsp" then
+	if not tool or tool == "parser" then
+		M.compile_parser(true)
+	end
+	if tool and tool ~= "formatter" and tool ~= "lsp" and tool ~= "parser" then
 		vim.notify("Unknown tool for update: " .. tool, vim.log.levels.ERROR)
 	end
 end
