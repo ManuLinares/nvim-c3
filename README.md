@@ -106,6 +106,18 @@ EOF
 ```
 </details>
 
+### Vim (without Neovim)
+
+If you use plain Vim (not Neovim), copy the plugin directory into your Vim runtime path:
+
+```bash
+cp -r . ~/.vim
+```
+
+You'll get filetype detection and syntax highlighting for `.c3`, `.c3i`, and `.c3t` files out of the box.
+
+> **Note:** LSP, Tree-Sitter highlighting, formatting, and all `:C3*` commands require Neovim and are not available in plain Vim.
+
 ## Configuration
 
 Settings are optional. Default values:
