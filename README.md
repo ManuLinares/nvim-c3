@@ -147,3 +147,4 @@ require("c3").setup({
 - *(1): Path to a `.c3fmt` configuration file. If a relative path is used, it is resolved from Neovim's current working directory (see `:pwd`). See [c3fmt configuration](https://github.com/lmichaudel/c3fmt#configuration) for more details.*
 - *(2): Minimum version or tag name from GitHub (e.g., `"v0.1.4"`). Defaults to `"latest"`.*
 - *(3): Paths are automatically resolved by locating `c3c` on your system path and querying the standard library path via `c3c compile - --build-env`. Provide absolute paths here only to explicitly override the automatic detection.*
+
