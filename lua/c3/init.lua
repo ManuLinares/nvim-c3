@@ -8,7 +8,7 @@ M._compile_attempts = 0
 M.config = {
 	lsp = {
 		enable = true,
-		cmd = "c3lsp",
+		cmd = "lsp",
 		version = "latest",
 		compiler_path = nil,
 		stdlib_path = nil,
@@ -209,7 +209,7 @@ function M.start_lsp(bufnr)
 
 	pcall(function()
 		vim.lsp.start({
-			name = "c3lsp",
+			name = "c3-lsp",
 			cmd = cmd,
 			root_dir = root_dir,
 			on_attach = function(client, bnr)
@@ -354,7 +354,7 @@ end
 function M.info()
 	local status = { "C3 Plugin Status:", "" }
 	
-	local clients = (vim.lsp.get_clients or vim.lsp.get_active_clients)({ name = "c3lsp" })
+	local clients = (vim.lsp.get_clients or vim.lsp.get_active_clients)({ name = "c3-lsp" })
 	if #clients > 0 then
 		table.insert(status, "LSP: Running (id: " .. clients[1].id .. ")")
 	else

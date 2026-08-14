@@ -126,7 +126,7 @@ Settings are optional. Default values:
 require("c3").setup({
   lsp = {
     enable = true, -- Set to false to disable LSP
-    cmd = "c3lsp",
+    cmd = "lsp", -- We use https://github.com/tonis2/lsp but you can use whatever you want
     version = "latest", -- (2)
     compiler_path = nil, -- Custom path to c3c binary (3)
     stdlib_path = nil, -- Custom path to C3 standard library (3)
