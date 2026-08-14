@@ -185,7 +185,7 @@ function M.start_lsp(bufnr)
 	local cmd = { cmd_path }
 	local compiler_path = M.config.lsp.compiler_path or (vim.fn.executable("c3c") == 1 and vim.fn.exepath("c3c") or nil)
 	if compiler_path and compiler_path ~= "" then
-		table.insert(cmd, "--compiler-path")
+		table.insert(cmd, "--c3c-path")
 		table.insert(cmd, compiler_path)
 	end
 
