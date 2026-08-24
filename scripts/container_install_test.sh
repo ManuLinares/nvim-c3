@@ -18,6 +18,7 @@ return {
   { 
     dir = "/workspace", 
     name = "nvim-c3", 
+    ft = { "c3", "c3i", "c3t" },
     config = true,
   }
 }

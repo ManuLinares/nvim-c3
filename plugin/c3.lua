@@ -5,41 +5,17 @@ vim.g.loaded_c3 = 1
 
 local c3 = require("c3")
 
-vim.api.nvim_create_autocmd("FileType", {
-	pattern = "c3",
-	callback = function(args)
-		if c3.config.formatter.format_on_save then
-			vim.api.nvim_create_autocmd("BufWritePre", {
-				buffer = args.buf,
-				callback = function()
-					c3.format()
-				end,
-			})
-		end
+vim.api.nvim_create_user_command("C3Info", function()
+	c3.info()
+end, { desc = "Show C3 plugin status" })
 
-		vim.api.nvim_buf_create_user_command(args.buf, "C3Format", function()
-			c3.format()
-		end, {})
-
-		vim.api.nvim_buf_create_user_command(args.buf, "Format", function()
-			c3.format()
-		end, {})
-		
-		vim.api.nvim_buf_create_user_command(args.buf, "C3Info", function()
-			c3.info()
-		end, {})
-
-		vim.api.nvim_buf_create_user_command(args.buf, "C3Update", function(cmd_args)
-			c3.update(cmd_args.args ~= "" and cmd_args.args or nil)
-		end, {
-			nargs = "?",
-			complete = function()
-				return { "lsp", "formatter" }
-			end,
-		})
-
-		c3.start_lsp(args.buf)
-
-		c3.setup_highlighting()
+vim.api.nvim_create_user_command("C3Update", function(cmd_args)
+	c3.update(cmd_args.args ~= "" and cmd_args.args or nil)
+end, {
+	nargs = "?",
+	complete = function()
+		return { "lsp", "formatter", "parser" }
 	end,
+	desc = "Update C3 LSP, formatter, or tree-sitter parser",
 })
+

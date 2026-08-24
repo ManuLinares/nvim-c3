@@ -24,6 +24,7 @@ Just install the plugin and open a `.c3` file. Everything is hopefully managed a
 ```lua
 {
   "ManuLinares/nvim-c3",
+  ft = { "c3", "c3i", "c3t" },
   build = function() require("c3").update() end, -- (Optional) Auto-update binaries
   config = true,
 }
@@ -75,7 +76,7 @@ git clone https://github.com/LazyVim/starter ~/.config/nvim
 # 3. Add this plugin
 cat << 'EOF' > ~/.config/nvim/lua/plugins/c3.lua
 return {
-  { "ManuLinares/nvim-c3", config = true }
+  { "ManuLinares/nvim-c3", ft = { "c3", "c3i", "c3t" }, config = true }
 }
 EOF
 ```
@@ -100,7 +101,7 @@ git clone https://github.com/LazyVim/starter ~/.config/nvim
 # 4. Add this plugin
 cat << 'EOF' > ~/.config/nvim/lua/plugins/c3.lua
 return {
-  { "ManuLinares/nvim-c3", config = true }
+  { "ManuLinares/nvim-c3", ft = { "c3", "c3i", "c3t" }, config = true }
 }
 EOF
 ```
