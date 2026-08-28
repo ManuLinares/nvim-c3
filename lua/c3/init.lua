@@ -8,17 +8,13 @@ M._compile_attempts = 0
 M.config = {
 	lsp = {
 		enable = true,
-		cmd = "lsp",
+		cmd = "c3_ls",
 		version = "latest",
 		compiler_path = nil,
 		stdlib_path = nil,
-	},
-	formatter = {
-		enable = true,
-		cmd = "c3fmt",
 		format_on_save = false,
-		config_file = nil,
-		version = "latest",
+		log_level = nil,
+		log_path = nil,
 	},
 	highlighting = {
 		enable_treesitter = true,
@@ -28,11 +24,8 @@ M.config = {
 local PARSER_DIR = vim.fn.stdpath("data") .. "/c3-parser"
 local PARSER_SO = PARSER_DIR .. "/c3.so"
 
-local FORMATTER_DIR = vim.fn.stdpath("data") .. "/c3-fmt"
-local FORMATTER_BIN = FORMATTER_DIR .. "/c3fmt" .. (vim.fn.has("win32") == 1 and ".exe" or "")
-
 local LSP_DIR = vim.fn.stdpath("data") .. "/c3-lsp"
-local LSP_BIN = LSP_DIR .. "/lsp" .. (vim.fn.has("win32") == 1 and ".exe" or "")
+local LSP_BIN = LSP_DIR .. "/c3_ls" .. (vim.fn.has("win32") == 1 and ".exe" or "")
 
 local function verify_query_compatibility(ts)
 	return pcall(function()
@@ -81,93 +74,65 @@ local function get_download_version_path(version)
 	return "download/" .. version
 end
 
-local function install_and_get_formatter(force)
-	local cmd = M.config.formatter.cmd
-	if vim.fn.executable(cmd) == 1 then return cmd end
-
-	if not force and vim.fn.filereadable(FORMATTER_BIN) == 1 then return FORMATTER_BIN end
-
-	if vim.fn.executable("curl") == 1 then
-		vim.api.nvim_echo({{ "Downloading c3fmt (" .. M.config.formatter.version .. ") from GitHub...", "None" }}, false, {})
-		vim.fn.mkdir(FORMATTER_DIR, "p")
-		local os = vim.fn.has("mac") == 1 and "macos" or (vim.fn.has("win32") == 1 and "windows.exe" or "linux")
-
-		local v_path = get_download_version_path(M.config.formatter.version)
-		local url = string.format("https://github.com/lmichaudel/c3fmt/releases/%s/c3fmt-%s", v_path, os)
-
-		vim.fn.system({ "curl", "-sL", url, "-o", FORMATTER_BIN })
-		if vim.v.shell_error == 0 then
-			if vim.fn.has("win32") == 0 then vim.fn.system({ "chmod", "+x", FORMATTER_BIN }) end
-			vim.api.nvim_echo({{ "c3fmt installed successfully!", "None" }}, false, {})
-			return FORMATTER_BIN
-		end
-	end
-	return nil
-end
-
-function M.format()
-	if not M.config.formatter.enable then return end
-	local cmd_path = install_and_get_formatter()
-	if not cmd_path then
-		vim.notify("c3fmt not found and auto-install failed.", vim.log.levels.WARN)
-		return
-	end
-
-	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-	local input = table.concat(lines, "\n")
-
-	local cmd_args = { cmd_path, "--stdin", "--stdout" }
-	if M.config.formatter.config_file then
-		local config_path = vim.fn.fnamemodify(tostring(M.config.formatter.config_file), ":p")
-		table.insert(cmd_args, "--config=" .. config_path)
-	end
-
-	local output = vim.fn.system(cmd_args, input)
-
-	if vim.v.shell_error == 0 and output ~= "" then
-		local view = vim.fn.winsaveview()
-		local new_lines = vim.split(output, "\n")
-		-- Clean up trailing empty line from formatter stdout
-		if new_lines[#new_lines] == "" then table.remove(new_lines) end
-
-		vim.api.nvim_buf_set_lines(0, 0, -1, false, new_lines)
-		if view then vim.fn.winrestview(view) end
-	else
-		vim.notify("c3fmt failed: " .. (output or "unknown error"), vim.log.levels.ERROR)
+function M.format(opts)
+	opts = opts or {}
+	local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
+	if vim.lsp.buf.format then
+		vim.lsp.buf.format(vim.tbl_extend("force", {
+			bufnr = bufnr,
+			filter = function(client)
+				return client.name == "c3_ls" or client.name == "c3-lsp"
+			end,
+		}, opts))
+	elseif vim.lsp.buf.formatting_sync then
+		vim.lsp.buf.formatting_sync(nil, 1000)
 	end
 end
 
 local function install_and_get_lsp(force)
 	local cmd = M.config.lsp.cmd
-	if not force and vim.fn.executable(cmd) == 1 then return cmd end
+	-- If user has specified a custom executable in PATH other than default c3_ls/lsp
+	if not force and cmd ~= "c3_ls" and cmd ~= "lsp" and vim.fn.executable(cmd) == 1 then
+		return cmd
+	end
 
 	if not force and vim.fn.filereadable(LSP_BIN) == 1 then return LSP_BIN end
+
+	-- Fallback to system-wide c3_ls if available
+	if not force and vim.fn.executable("c3_ls") == 1 then return "c3_ls" end
 
 	local has_unzip = vim.fn.executable("unzip") == 1
 	local has_tar = vim.fn.executable("tar") == 1
 	local has_curl = vim.fn.executable("curl") == 1
+	local is_win = vim.fn.has("win32") == 1
+	local can_extract = (is_win and (has_unzip or has_tar)) or (not is_win and has_tar)
 
-	if has_curl and (has_unzip or has_tar) then
+	if has_curl and can_extract then
 		vim.api.nvim_echo({{ "Downloading C3 LSP (" .. M.config.lsp.version .. ") from GitHub...", "None" }}, false, {})
 		vim.fn.mkdir(LSP_DIR, "p")
-		local os = vim.fn.has("mac") == 1 and "macos" or (vim.fn.has("win32") == 1 and "windows" or "linux")
+		local os = vim.fn.has("mac") == 1 and "macos" or (is_win and "windows" or "linux")
 		local uv = vim.uv or vim.loop
 		local arch = uv.os_uname().machine
 		arch = (arch:match("arm") or arch:match("aarch64")) and "aarch64" or "x86_64"
 
+		local ext = is_win and "zip" or "tar.gz"
 		local v_path = get_download_version_path(M.config.lsp.version)
-		local url = string.format("https://github.com/tonis2/lsp/releases/%s/c3-lsp-%s-%s.zip", v_path, os, arch)
-		local zip_path = LSP_DIR .. "/lsp.zip"
+		local url = string.format("https://github.com/ManuLinares/c3_ls/releases/%s/c3_ls-%s-%s.%s", v_path, os, arch, ext)
+		local archive_path = LSP_DIR .. "/c3_ls_download." .. ext
 
-		vim.fn.system({ "curl", "-sL", url, "-o", zip_path })
+		vim.fn.system({ "curl", "-sL", url, "-o", archive_path })
 		if vim.v.shell_error == 0 then
-			if has_unzip then
-				vim.fn.system({ "unzip", "-o", zip_path, "-d", LSP_DIR })
+			if ext == "zip" then
+				if has_unzip then
+					vim.fn.system({ "unzip", "-o", archive_path, "-d", LSP_DIR })
+				else
+					vim.fn.system({ "tar", "-xf", archive_path, "-C", LSP_DIR })
+				end
 			else
-				vim.fn.system({ "tar", "-xf", zip_path, "-C", LSP_DIR })
+				vim.fn.system({ "tar", "-xzf", archive_path, "-C", LSP_DIR })
 			end
-			vim.fn.delete(zip_path)
-			if vim.fn.has("win32") == 0 then vim.fn.system({ "chmod", "+x", LSP_BIN }) end
+			vim.fn.delete(archive_path)
+			if not is_win then vim.fn.system({ "chmod", "+x", LSP_BIN }) end
 			vim.api.nvim_echo({{ "C3 LSP installed successfully!", "None" }}, false, {})
 			return LSP_BIN
 		end
@@ -207,9 +172,19 @@ function M.start_lsp(bufnr)
 		table.insert(cmd, stdlib_path)
 	end
 
+	if M.config.lsp.log_level and M.config.lsp.log_level ~= "" then
+		table.insert(cmd, "--log-level")
+		table.insert(cmd, M.config.lsp.log_level)
+	end
+
+	if M.config.lsp.log_path and M.config.lsp.log_path ~= "" then
+		table.insert(cmd, "--log-path")
+		table.insert(cmd, vim.fn.fnamemodify(tostring(M.config.lsp.log_path), ":p"))
+	end
+
 	pcall(function()
 		vim.lsp.start({
-			name = "c3-lsp",
+			name = "c3_ls",
 			cmd = cmd,
 			root_dir = root_dir,
 			on_attach = function(client, bnr)
@@ -354,7 +329,7 @@ end
 function M.info()
 	local status = { "C3 Plugin Status:", "" }
 	
-	local clients = (vim.lsp.get_clients or vim.lsp.get_active_clients)({ name = "c3-lsp" })
+	local clients = (vim.lsp.get_clients or vim.lsp.get_active_clients)({ name = "c3_ls" })
 	if #clients > 0 then
 		table.insert(status, "LSP: Running (id: " .. clients[1].id .. ")")
 	else
@@ -368,27 +343,17 @@ function M.info()
 		table.insert(status, "Tree-Sitter: Inactive (using fallback syntax)")
 	end
 
-	local fmt = install_and_get_formatter()
-	if fmt then
-		table.insert(status, "Formatter: Ready (" .. fmt .. ")")
-	else
-		table.insert(status, "Formatter: Missing")
-	end
-
 	vim.api.nvim_echo({{ table.concat(status, "\n"), "None" }}, true, {})
 end
 
 function M.update(tool)
-	if not tool or tool == "formatter" then
-		install_and_get_formatter(true)
-	end
 	if not tool or tool == "lsp" then
 		install_and_get_lsp(true)
 	end
 	if not tool or tool == "parser" then
 		M.compile_parser(true)
 	end
-	if tool and tool ~= "formatter" and tool ~= "lsp" and tool ~= "parser" then
+	if tool and tool ~= "lsp" and tool ~= "parser" then
 		vim.notify("Unknown tool for update: " .. tool, vim.log.levels.ERROR)
 	end
 end

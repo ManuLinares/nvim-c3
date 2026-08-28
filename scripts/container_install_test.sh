@@ -31,17 +31,14 @@ echo "--- Testing Dependency Updates ---"
 nvim --headless "+lua require('c3').update()" +qa
 
 echo "--- Verifying Binaries ---"
-C3FMT=~/.local/share/nvim/c3-fmt/c3fmt
-C3LSP=~/.local/share/nvim/c3-lsp/lsp
+C3LSP=~/.local/share/nvim/c3-lsp/c3_ls
 
-if [ -f "$C3FMT" ] && [ -f "$C3LSP" ]; then
-    echo "SUCCESS: Binaries downloaded successfully!"
-    echo "c3fmt version:"
-    "$C3FMT" --version
+if [ -f "$C3LSP" ]; then
+    echo "SUCCESS: LSP binary downloaded successfully!"
     echo "C3 LSP version:"
     "$C3LSP" --version
 else
-    echo "FAILURE: Binaries and/or LSP missing."
+    echo "FAILURE: LSP binary missing."
     exit 1
 fi
 

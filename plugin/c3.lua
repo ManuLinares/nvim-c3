@@ -14,8 +14,8 @@ vim.api.nvim_create_user_command("C3Update", function(cmd_args)
 end, {
 	nargs = "?",
 	complete = function()
-		return { "lsp", "formatter", "parser" }
+		return { "lsp", "parser" }
 	end,
-	desc = "Update C3 LSP, formatter, or tree-sitter parser",
+	desc = "Update C3 LSP or tree-sitter parser",
 })
 
