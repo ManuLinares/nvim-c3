@@ -1,7 +1,7 @@
 local M = {}
 
 -- Pin version to match parser binary with highlight queries
-M.TREE_SITTER_C3_VERSION = "v0.11.0"
+M.TREE_SITTER_C3_VERSION = "v0.12.0"
 M._is_compiling = false
 M._compile_attempts = 0
 
